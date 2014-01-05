@@ -43,3 +43,7 @@
    [153078 137421 834006 76948 88006 10036 10046 5146 6081]
    [444465 382451 800894 17127 10072 10080 71490 5190 6739]
    [157773 850672 270444 69977 71518 22713 26100 1245 3101]])
+
+(defn decode [outer-column inner-column race]
+  (let [row (mod (- outer-column inner-column) 24)]
+    (get-in codes [row race])))
