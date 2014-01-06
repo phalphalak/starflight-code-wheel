@@ -82,15 +82,15 @@
         panel (proxy [JPanel] []
                 (paintComponent [g]
                   (proxy-super paintComponent g)
-                  (.setFont g (Font. "Default" Font/PLAIN font-size))
-                  (.setColor g Color/BLACK)
-                  (.transform g center-transformation)
-                  (.fillOval g
-                             (- outer-wheel-radius)
-                             (- outer-wheel-radius)
-                             (* 2 outer-wheel-radius)
-                             (* 2 outer-wheel-radius))
-                  (.setColor g Color/WHITE)
+                  (doto g
+                    (.setFont (Font. "Default" Font/PLAIN font-size))
+                    (.setColor Color/BLACK)
+                    (.transform center-transformation)
+                    (.fillOval (- outer-wheel-radius)
+                               (- outer-wheel-radius)
+                               (* 2 outer-wheel-radius)
+                               (* 2 outer-wheel-radius))
+                    (.setColor Color/WHITE))
                   (doseq [[index heading code-column]
                           (map vector (range) outer-column-headings codes)]
                     (prn [index heading code-column])
@@ -106,7 +106,12 @@
                       (doseq [[line text] (map-indexed vector heading-lines)]
                         (draw-string g text
                                    (int (- (/ (string-width g text) 2)))
-                                   (- (+ 18 (* line 15)) outer-wheel-radius)))
+                                   (- (+ 15 (* line 14)) outer-wheel-radius)))
+                      (doseq [[i code] (map-indexed vector code-column)]
+                        (draw-string g
+                                     (str code)
+                                     (int (- (/ (string-width g (str code)) 2)))
+                                     (- (+ 80 (* i 14)) outer-wheel-radius)))
                       (.transform g rotation2)
                       (.drawLine g 0 outer-wheel-radius 0 0)))))]
     (doto panel
