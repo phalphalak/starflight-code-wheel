@@ -1,8 +1,13 @@
-(ns starflight-code-wheel.core)
+(ns starflight-code-wheel.core
+  (:import [javax.swing JFrame JPanel]
+           [java.awt Dimension Color Font]
+           [java.awt.font FontRenderContext]
+           [java.awt.geom AffineTransform])
+  (:gen-class))
 
 (def outer-column-headings
   ["Arth" "Thoss/Eleran" "Harrison's\nBase" "Sphexi" "Spewta" "Earth" "Mardan 2"
-   "NewnScotland" "Koann 3" "Heaven" "Uhlek\nBrain World" "Gaal" "Akteron"
+   "New\nScotland" "Koann 3" "Heaven" "Uhlek\nBrain World" "Gaal" "Akteron"
    "Nirvana" "The Staff" "The Cross" "Pythagoras" "The 4\nSeedlings" "The Axe"
    "City of\nAncients" "Mars" "Crystal\nPlanet" "Elan" "Votiputox"])
 
@@ -44,6 +49,73 @@
    [444465 382451 800894 17127 10072 10080 71490 5190 6739]
    [157773 850672 270444 69977 71518 22713 26100 1245 3101]])
 
+(def panel-size 620)
+(def outer-wheel-radius 300)
+(def column-count (count codes))
+(def font-size (/ outer-wheel-radius 28))
+
 (defn decode [outer-column inner-column race]
-  (let [row (mod (- outer-column inner-column) 24)]
+  (let [row (mod (- outer-column inner-column) column-count)]
     (get-in codes [row race])))
+
+(defn- string-dimensions [g s]
+  (.getStringBounds (.getFontMetrics g) s g))
+
+(defn- string-width [g s]
+  (.stringWidth (.getFontMetrics g) s))
+
+(defn- draw-string
+  "This is a workaround for a bug with mac jdk where .drawString rotates each
+   character instead of the complete string"
+  [g s x y]
+  (let [glyph-vector (.createGlyphVector (.getFont g)
+                                         (FontRenderContext. #^AffineTransform (.getTransform g)
+                                                             (boolean false)
+                                                             (boolean true))
+                                         s)]
+    (.drawGlyphVector g glyph-vector x y)))
+
+(defn- create-frame []
+  (let [frame (JFrame. "Starflight Code Wheel")
+        center-transformation (AffineTransform/getTranslateInstance (/ panel-size 2)
+                                                                    (/ panel-size 2))
+        panel (proxy [JPanel] []
+                (paintComponent [g]
+                  (proxy-super paintComponent g)
+                  (.setFont g (Font. "Default" Font/PLAIN font-size))
+                  (.setColor g Color/BLACK)
+                  (.transform g center-transformation)
+                  (.fillOval g
+                             (- outer-wheel-radius)
+                             (- outer-wheel-radius)
+                             (* 2 outer-wheel-radius)
+                             (* 2 outer-wheel-radius))
+                  (.setColor g Color/WHITE)
+                  (doseq [[index heading code-column]
+                          (map vector (range) outer-column-headings codes)]
+                    (prn [index heading code-column])
+                    (let [rotation (AffineTransform/getRotateInstance (* index
+                                                                         (/ (* 2 Math/PI)
+                                                                            column-count)))
+                          rotation2 (AffineTransform/getRotateInstance (/ (* 2 Math/PI)
+                                                                          (* 2 column-count)))
+                          center (AffineTransform. center-transformation)
+                          heading-lines (clojure.string/split heading #"\n")]
+                      (.concatenate center rotation)
+                      (.setTransform g center)
+                      (doseq [[line text] (map-indexed vector heading-lines)]
+                        (draw-string g text
+                                   (int (- (/ (string-width g text) 2)))
+                                   (- (+ 18 (* line 15)) outer-wheel-radius)))
+                      (.transform g rotation2)
+                      (.drawLine g 0 outer-wheel-radius 0 0)))))]
+    (doto panel
+      (.setPreferredSize (Dimension. panel-size panel-size)))
+    (doto (.getContentPane frame)
+      (.add panel))
+    (doto frame
+      (.setDefaultCloseOperation JFrame/EXIT_ON_CLOSE)
+      (.pack))))
+
+(defn -main [& args]
+  (.setVisible (create-frame) true))
