@@ -1,8 +1,9 @@
 (ns starflight-code-wheel.core
   (:import [javax.swing JFrame JPanel]
-           [java.awt Dimension Color Font]
+           [java.awt Dimension Color Font RenderingHints]
            [java.awt.font FontRenderContext]
-           [java.awt.geom AffineTransform])
+           [java.awt.geom AffineTransform]
+           [java.awt.image BufferedImage])
   (:gen-class))
 
 (def outer-column-headings
@@ -49,10 +50,16 @@
    [444465 382451 800894 17127 10072 10080 71490 5190 6739]
    [157773 850672 270444 69977 71518 22713 26100 1245 3101]])
 
-(def panel-size 620)
-(def outer-wheel-radius 300)
+(def image-scale 1)
+(def panel-gap (* image-scale 10))
+(def outer-wheel-radius (* image-scale 300))
+(def panel-size (* image-scale (* 2 (+ panel-gap outer-wheel-radius))))
+(def inner-wheel-radius (* image-scale 270))
 (def column-count (count codes))
-(def font-size (/ outer-wheel-radius 28))
+(def font-size (* image-scale (/ outer-wheel-radius 28)))
+(def offset-outer-headline (* image-scale 15))
+(def offset-codes (* image-scale 80))
+(def line-gap (* image-scale 14))
 
 (defn decode [outer-column inner-column race]
   (let [row (mod (- outer-column inner-column) column-count)]
@@ -64,58 +71,87 @@
 (defn- string-width [g s]
   (.stringWidth (.getFontMetrics g) s))
 
+(defn- center-transformation []
+  (AffineTransform/getTranslateInstance (/ panel-size 2)
+                                        (/ panel-size 2)))
+
 (defn- draw-string
   "This is a workaround for a bug with mac jdk where .drawString rotates each
    character instead of the complete string"
   [g s x y]
   (let [glyph-vector (.createGlyphVector (.getFont g)
                                          (FontRenderContext. #^AffineTransform (.getTransform g)
-                                                             (boolean false)
+                                                             (boolean true)
                                                              (boolean true))
                                          s)]
     (.drawGlyphVector g glyph-vector x y)))
 
+(defn- paint-filled-circle [g radius colour]
+  (doto g
+    (.setColor colour)
+    (.setTransform (center-transformation))
+    (.fillOval (- radius)
+               (- radius)
+               (* 2 radius)
+               (* 2 radius))))
+
+(defn- paint-outer-wheel [g]
+  (doto g
+    (.setFont (Font. "Default" Font/PLAIN font-size))
+    (paint-filled-circle outer-wheel-radius Color/BLACK)
+    (.setColor Color/WHITE))
+  (doseq [[index heading code-column]
+          (map vector (range) outer-column-headings codes)]
+    (let [rotation (AffineTransform/getRotateInstance (* index
+                                                         (/ (* 2 Math/PI)
+                                                            column-count)))
+          rotation2 (AffineTransform/getRotateInstance (/ (* 2 Math/PI)
+                                                          (* 2 column-count)))
+          transformation (center-transformation)
+          heading-lines (clojure.string/split heading #"\n")]
+      (.setTransform g (center-transformation))
+      (.transform g rotation)
+      (doseq [[line text] (map-indexed vector heading-lines)]
+        (draw-string g text
+                     (int (- (/ (string-width g text) 2)))
+                     (- (+ offset-outer-headline (* line line-gap)) outer-wheel-radius)))
+      (doseq [[i code] (map-indexed vector code-column)]
+        (draw-string g
+                     (str code)
+                     (int (- (/ (string-width g (str code)) 2)))
+                     (- (+ offset-codes (* i line-gap)) outer-wheel-radius)))
+      (.transform g rotation2)
+      (.drawLine g 0 outer-wheel-radius 0 0))))
+
+(defn- set-rendering-hints [g]
+  (doto g
+    (.setRenderingHint RenderingHints/KEY_ANTIALIASING RenderingHints/VALUE_ANTIALIAS_ON)))
+
+(defn- paint-inner-wheel [g]
+  (doto g
+    (paint-filled-circle inner-wheel-radius Color/BLACK)))
+
+(defn- create-outer-wheel-image []
+  (let [image (BufferedImage. panel-size panel-size BufferedImage/TYPE_INT_ARGB)
+        g2 (.createGraphics image)]
+    (paint-outer-wheel g2)
+    image))
+
+(def outer-wheel-image
+  (create-outer-wheel-image))
+
 (defn- create-frame []
   (let [frame (JFrame. "Starflight Code Wheel")
-        center-transformation (AffineTransform/getTranslateInstance (/ panel-size 2)
-                                                                    (/ panel-size 2))
         panel (proxy [JPanel] []
                 (paintComponent [g]
                   (proxy-super paintComponent g)
                   (doto g
-                    (.setFont (Font. "Default" Font/PLAIN font-size))
-                    (.setColor Color/BLACK)
-                    (.transform center-transformation)
-                    (.fillOval (- outer-wheel-radius)
-                               (- outer-wheel-radius)
-                               (* 2 outer-wheel-radius)
-                               (* 2 outer-wheel-radius))
-                    (.setColor Color/WHITE))
-                  (doseq [[index heading code-column]
-                          (map vector (range) outer-column-headings codes)]
-                    (prn [index heading code-column])
-                    (let [rotation (AffineTransform/getRotateInstance (* index
-                                                                         (/ (* 2 Math/PI)
-                                                                            column-count)))
-                          rotation2 (AffineTransform/getRotateInstance (/ (* 2 Math/PI)
-                                                                          (* 2 column-count)))
-                          center (AffineTransform. center-transformation)
-                          heading-lines (clojure.string/split heading #"\n")]
-                      (.concatenate center rotation)
-                      (.setTransform g center)
-                      (doseq [[line text] (map-indexed vector heading-lines)]
-                        (draw-string g text
-                                   (int (- (/ (string-width g text) 2)))
-                                   (- (+ 15 (* line 14)) outer-wheel-radius)))
-                      (doseq [[i code] (map-indexed vector code-column)]
-                        (draw-string g
-                                     (str code)
-                                     (int (- (/ (string-width g (str code)) 2)))
-                                     (- (+ 80 (* i 14)) outer-wheel-radius)))
-                      (.transform g rotation2)
-                      (.drawLine g 0 outer-wheel-radius 0 0)))))]
+                    (.drawImage outer-wheel-image 0 0 (/ panel-size image-scale) (/ panel-size image-scale) this))
+                  ;(paint-outer-wheel g)
+                  ;(paint-inner-wheel g)
+                  ))]
     (doto panel
-      (.setPreferredSize (Dimension. panel-size panel-size)))
+      (.setPreferredSize (Dimension. (/ panel-size image-scale) (/ panel-size image-scale))))
     (doto (.getContentPane frame)
       (.add panel))
     (doto frame
